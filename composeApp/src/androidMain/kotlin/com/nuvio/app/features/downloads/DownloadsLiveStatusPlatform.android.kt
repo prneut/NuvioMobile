@@ -47,6 +47,8 @@ internal actual object DownloadsLiveStatusPlatform {
         }
 
         val trackedNow = mutableSetOf<String>()
+        var isForegroundAssigned = false
+
         activeItems.forEach { item ->
             val renderState = RenderState(
                 status = item.status,
@@ -59,12 +61,40 @@ internal actual object DownloadsLiveStatusPlatform {
             val existingState = lastRenderStateById[item.id]
             if (existingState == renderState) {
                 trackedNow += item.id
-                return@forEach
+                // Note: we still need to assign foreground if not yet assigned, but we only have cached states.
+                // It's fine to just notify again to ensure it's bound.
             }
 
-            manager.notify(notificationId(item.id), buildNotification(context, item))
+            val notification = buildNotification(context, item)
+            val service = DownloadsForegroundService.activeService
+            if (service != null && !isForegroundAssigned) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        service.startForeground(
+                            notificationId(item.id), 
+                            notification, 
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    } else {
+                        service.startForeground(notificationId(item.id), notification)
+                    }
+                    isForegroundAssigned = true
+                } catch (e: Exception) {
+                    manager.notify(notificationId(item.id), notification)
+                }
+            } else {
+                manager.notify(notificationId(item.id), notification)
+            }
+            
             lastRenderStateById[item.id] = renderState
             trackedNow += item.id
+        }
+
+        if (activeItems.isEmpty()) {
+            val stopIntent = Intent(context, DownloadsForegroundService::class.java).apply {
+                action = DownloadsForegroundService.ACTION_STOP
+            }
+            try { context.startService(stopIntent) } catch (e: Exception) {}
         }
 
         val staleIds = trackedBefore - trackedNow

@@ -51,6 +51,15 @@ internal actual object DownloadsPlatformDownloader {
                 return@launch
             }
 
+            try {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    context,
+                    android.content.Intent(context, DownloadsForegroundService::class.java)
+                )
+            } catch (e: Exception) {
+                // Ignore if we can't start the service (e.g., background restrictions)
+            }
+
             val downloadsDir = File(context.filesDir, "downloads").apply { mkdirs() }
             val destination = File(downloadsDir, request.destinationFileName)
             val tempFile = File(downloadsDir, "${request.destinationFileName}.part")
