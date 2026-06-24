@@ -216,6 +216,12 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             onTogglePlayback = { togglePlayback() },
             onSeekBack = { seekBy(-10_000L) },
             onSeekForward = { seekBy(10_000L) },
+            hasNextEpisode = isEpisode && nextEpisodeInfo != null && nextEpisodeInfo?.hasAired == true,
+            onNextEpisodeClick = {
+                showNextEpisodeCard = true
+                nextEpisodeAutoPlayJob?.cancel()
+                playNextEpisode()
+            },
             onResizeModeClick = { cycleResizeMode() },
             onSpeedClick = { cyclePlaybackSpeed() },
             onSubtitleClick = {
