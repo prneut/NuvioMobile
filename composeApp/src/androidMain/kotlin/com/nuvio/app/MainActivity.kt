@@ -5,7 +5,6 @@ import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.activity.SystemBarStyle
 import androidx.appcompat.app.AppCompatActivity
@@ -114,7 +113,7 @@ class MainActivity : AppCompatActivity() {
         EpisodeReleaseNotificationPlatform.bindActivity(this)
         handleIncomingAppIntent(intent)
 
-        androidx.lifecycle.lifecycleScope.launch {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
             // Ask for notification permissions on first launch for downloads and episode releases
             EpisodeReleaseNotificationPlatform.requestAuthorization()
         }
