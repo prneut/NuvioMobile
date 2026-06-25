@@ -113,6 +113,11 @@ class MainActivity : AppCompatActivity() {
         EpisodeReleaseNotificationPlatform.bindActivity(this)
         handleIncomingAppIntent(intent)
 
+        androidx.lifecycle.lifecycleScope.launch {
+            // Ask for notification permissions on first launch for downloads and episode releases
+            EpisodeReleaseNotificationPlatform.requestAuthorization()
+        }
+
         setContent {
             App()
         }
