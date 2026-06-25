@@ -94,6 +94,7 @@ android {
             applicationIdSuffix = ".optimal"
         }
         getByName("release") {
+            applicationIdSuffix = ".optimal"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
