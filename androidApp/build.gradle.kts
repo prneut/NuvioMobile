@@ -90,6 +90,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".optimal"
+        }
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
