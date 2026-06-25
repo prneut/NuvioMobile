@@ -51,7 +51,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.nuvio.app.optimal"
+        applicationId = "com.nuvio.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = releaseAppVersionCode
@@ -90,6 +90,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".optimal"
+        }
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
