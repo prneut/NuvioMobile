@@ -49,12 +49,16 @@ internal fun <T> findPreferredTrackIndex(
     tracks: List<T>,
     targets: List<String>,
     language: (T) -> String?,
+    label: (T) -> String? = { null },
 ): Int {
     if (targets.isEmpty()) return -1
     for (target in targets) {
         val matchIndex = tracks.indexOfFirst { track ->
             languageMatchesPreference(
                 trackLanguage = language(track),
+                targetLanguage = target,
+            ) || languageMatchesPreference(
+                trackLanguage = label(track),
                 targetLanguage = target,
             )
         }
@@ -83,6 +87,9 @@ internal fun findPreferredSubtitleTrackIndex(
         val matchIndex = tracks.indexOfFirst { track ->
             languageMatchesPreference(
                 trackLanguage = track.language,
+                targetLanguage = normalizedTarget,
+            ) || languageMatchesPreference(
+                trackLanguage = track.label,
                 targetLanguage = normalizedTarget,
             )
         }
