@@ -8,6 +8,7 @@ import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import io.ktor.client.plugins.HttpRequestRetry
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.HttpHeaders
 import io.ktor.http.takeFrom
@@ -21,6 +22,11 @@ object SupabaseProvider {
             supabaseKey = SupabaseConfig.ANON_KEY,
         ) {
             httpConfig {
+                install(HttpTimeout) {
+                    requestTimeoutMillis = 45000
+                    connectTimeoutMillis = 45000
+                    socketTimeoutMillis = 45000
+                }
                 if (SupabaseEndpointConfig.hasFallback) {
                     install(HttpRequestRetry) {
                         retryOnExceptionIf(maxRetries = 1) { request, cause ->
