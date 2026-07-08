@@ -211,6 +211,7 @@ object DownloadsRepository {
                 errorMessage = null,
             )
         }
+        persist()
     }
 
     fun pauseActiveDownloads() {
@@ -328,6 +329,7 @@ object DownloadsRepository {
                         updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                     )
                 }
+                persist()
             },
             onFailure = { message ->
                 activeHandles.remove(item.id)
@@ -342,6 +344,7 @@ object DownloadsRepository {
                         )
                     }
                 }
+                persist()
             },
         )
 

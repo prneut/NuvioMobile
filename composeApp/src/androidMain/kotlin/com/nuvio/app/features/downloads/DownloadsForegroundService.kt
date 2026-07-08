@@ -66,7 +66,7 @@ class DownloadsForegroundService : Service() {
         if (wakeLock == null) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Nuvio:DownloadsWakeLock")
-            wakeLock?.acquire(10 * 60 * 1000L) // 10 minutes max per chunk/part, just in case to prevent infinite drain
+            wakeLock?.acquire(4 * 60 * 60 * 1000L) // 4 hours max per chunk/part
         }
     }
 
