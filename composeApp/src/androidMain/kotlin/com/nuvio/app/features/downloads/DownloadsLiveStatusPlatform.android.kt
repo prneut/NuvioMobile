@@ -18,7 +18,7 @@ import org.jetbrains.compose.resources.getString
 import kotlin.math.abs
 
 internal actual object DownloadsLiveStatusPlatform {
-    private const val channelId = "downloads_live_status"
+    internal const val channelId = "downloads_live_status"
     private const val notificationsPrefName = "nuvio_download_live_notifications"
     private const val trackedDownloadIdsKey = "tracked_download_ids"
 
@@ -27,7 +27,7 @@ internal actual object DownloadsLiveStatusPlatform {
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
-        ensureNotificationChannel()
+        ensureNotificationChannel(context)
     }
 
     actual fun onItemsChanged(items: List<DownloadItem>) {
@@ -48,6 +48,10 @@ internal actual object DownloadsLiveStatusPlatform {
 
         val trackedNow = mutableSetOf<String>()
         var isForegroundAssigned = false
+
+        if (activeItems.isNotEmpty()) {
+            manager.cancel(DownloadsForegroundService.INITIAL_NOTIFICATION_ID)
+        }
 
         activeItems.forEach { item ->
             val renderState = RenderState(
@@ -254,8 +258,7 @@ internal actual object DownloadsLiveStatusPlatform {
         )
     }
 
-    private fun ensureNotificationChannel() {
-        val context = appContext ?: return
+    internal fun ensureNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
