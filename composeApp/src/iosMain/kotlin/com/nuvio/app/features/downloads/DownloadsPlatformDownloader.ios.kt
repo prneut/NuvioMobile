@@ -256,6 +256,19 @@ private class IosDownloadDelegate(
         )
         result = nextResult
 
+        val contentType = httpResponse?.valueForHTTPHeaderField("Content-Type")?.lowercase() ?: ""
+        if (contentType.contains("text/html") ||
+            contentType.contains("application/json") ||
+            contentType.contains("application/x-bittorrent") ||
+            contentType.contains("application/x-mpegurl") ||
+            contentType.contains("application/vnd.apple.mpegurl") ||
+            contentType.contains("text/plain")
+        ) {
+            fileError = IllegalStateException("Unsupported content type for download: $contentType")
+            completionHandler(0L) // Cancel the download
+            return
+        }
+
         if (statusCode in 200..299) {
             val isPartialResume = attemptedRangeRequest && statusCode == 206 && resumeFromBytes > 0L
             startingBytesForResponse = if (isPartialResume) resumeFromBytes else 0L

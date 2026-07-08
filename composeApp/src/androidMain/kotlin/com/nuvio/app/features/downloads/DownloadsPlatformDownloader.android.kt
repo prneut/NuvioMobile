@@ -108,6 +108,17 @@ internal actual object DownloadsPlatformDownloader {
                         )
                     }
 
+                    val contentType = response.header("Content-Type")?.lowercase() ?: ""
+                    if (contentType.contains("text/html") ||
+                        contentType.contains("application/json") ||
+                        contentType.contains("application/x-bittorrent") ||
+                        contentType.contains("application/x-mpegurl") ||
+                        contentType.contains("application/vnd.apple.mpegurl") ||
+                        contentType.contains("text/plain") // often used for m3u8 or errors
+                    ) {
+                        error("Unsupported content type for download: $contentType")
+                    }
+
                     val isPartialResume = attemptedRangeRequest && response.code == 206 && resumeFromBytes > 0L
                     val appendToTemp = isPartialResume
                     val startingBytes = if (appendToTemp) resumeFromBytes else 0L
