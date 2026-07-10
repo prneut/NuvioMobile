@@ -11,8 +11,8 @@
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 90,
-      "versionName": "0.2.18",
+      "versionCode": 91,
+      "versionName": "0.2.19",
       "outputFile": "androidApp-full-release.apk"
     }
   ],

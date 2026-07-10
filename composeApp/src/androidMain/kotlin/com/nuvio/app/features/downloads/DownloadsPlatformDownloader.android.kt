@@ -66,107 +66,123 @@ internal actual object DownloadsPlatformDownloader {
             val destination = File(downloadsDir, request.destinationFileName)
             val tempFile = File(downloadsDir, "${request.destinationFileName}.part")
 
-            try {
-                var resumeFromBytes = tempFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
+            var retryCount = 0
+            val maxRetries = 20
 
-                fun buildRequest(rangeStart: Long?): Request {
-                    val requestBuilder = Request.Builder().url(request.sourceUrl)
-                    request.sourceHeaders.forEach { (key, value) ->
-                        requestBuilder.header(key, value)
+            while (true) {
+                try {
+                    var resumeFromBytes = tempFile.takeIf { it.exists() }?.length()?.coerceAtLeast(0L) ?: 0L
+
+                    fun buildRequest(rangeStart: Long?): Request {
+                        val requestBuilder = Request.Builder().url(request.sourceUrl)
+                        request.sourceHeaders.forEach { (key, value) ->
+                            requestBuilder.header(key, value)
+                        }
+                        if (rangeStart != null && rangeStart > 0L) {
+                            requestBuilder.header("Range", "bytes=$rangeStart-")
+                        }
+                        return requestBuilder.get().build()
                     }
-                    if (rangeStart != null && rangeStart > 0L) {
-                        requestBuilder.header("Range", "bytes=$rangeStart-")
-                    }
-                    return requestBuilder.get().build()
-                }
 
-                var attemptedRangeRequest = resumeFromBytes > 0L
-                var httpRequest = buildRequest(if (attemptedRangeRequest) resumeFromBytes else null)
-                call = downloadHttpClient.newCall(httpRequest)
-                var response = call?.execute() ?: error(
-                    runBlocking { getString(Res.string.downloads_error_request_failed) },
-                )
-
-                if (attemptedRangeRequest && response.code == 416) {
-                    response.close()
-                    tempFile.delete()
-                    resumeFromBytes = 0L
-                    attemptedRangeRequest = false
-                    httpRequest = buildRequest(null)
+                    var attemptedRangeRequest = resumeFromBytes > 0L
+                    var httpRequest = buildRequest(if (attemptedRangeRequest) resumeFromBytes else null)
                     call = downloadHttpClient.newCall(httpRequest)
-                    response = call?.execute() ?: error(
+                    var response = call?.execute() ?: error(
                         runBlocking { getString(Res.string.downloads_error_request_failed) },
                     )
-                }
 
-                response.use { response ->
-                    if (!response.isSuccessful) {
-                        error(
-                            runBlocking {
-                                getString(Res.string.downloads_error_http_failed, response.code)
-                            },
+                    if (attemptedRangeRequest && response.code == 416) {
+                        response.close()
+                        tempFile.delete()
+                        resumeFromBytes = 0L
+                        attemptedRangeRequest = false
+                        httpRequest = buildRequest(null)
+                        call = downloadHttpClient.newCall(httpRequest)
+                        response = call?.execute() ?: error(
+                            runBlocking { getString(Res.string.downloads_error_request_failed) },
                         )
                     }
 
-                    val contentType = response.header("Content-Type")?.lowercase() ?: ""
-                    if (contentType.contains("text/html") ||
-                        contentType.contains("application/json") ||
-                        contentType.contains("application/x-bittorrent") ||
-                        contentType.contains("application/x-mpegurl") ||
-                        contentType.contains("application/vnd.apple.mpegurl") ||
-                        contentType.contains("text/plain") // often used for m3u8 or errors
-                    ) {
-                        error("Unsupported content type for download: $contentType")
-                    }
+                    response.use { response ->
+                        if (!response.isSuccessful) {
+                            error(
+                                runBlocking {
+                                    getString(Res.string.downloads_error_http_failed, response.code)
+                                },
+                            )
+                        }
 
-                    val isPartialResume = attemptedRangeRequest && response.code == 206 && resumeFromBytes > 0L
-                    val appendToTemp = isPartialResume
-                    val startingBytes = if (appendToTemp) resumeFromBytes else 0L
+                        val contentType = response.header("Content-Type")?.lowercase() ?: ""
+                        if (contentType.contains("text/html") ||
+                            contentType.contains("application/json") ||
+                            contentType.contains("application/x-bittorrent") ||
+                            contentType.contains("application/x-mpegurl") ||
+                            contentType.contains("application/vnd.apple.mpegurl") ||
+                            contentType.contains("text/plain") // often used for m3u8 or errors
+                        ) {
+                            error("Unsupported content type for download: $contentType")
+                        }
 
-                    if (!appendToTemp && tempFile.exists()) {
-                        tempFile.delete()
-                    }
+                        val isPartialResume = attemptedRangeRequest && response.code == 206 && resumeFromBytes > 0L
+                        val appendToTemp = isPartialResume
+                        val startingBytes = if (appendToTemp) resumeFromBytes else 0L
 
-                    val body = response.body ?: error(
-                        runBlocking { getString(Res.string.downloads_error_empty_body) },
-                    )
-                    val totalBytes = resolveTotalBytes(
-                        startingBytes = startingBytes,
-                        isPartialResume = isPartialResume,
-                        contentRangeHeader = response.header("Content-Range"),
-                        contentLength = body.contentLength().takeIf { it > 0L },
-                    )
-                    var downloadedBytes = startingBytes
-                    onProgress(downloadedBytes, totalBytes)
+                        if (!appendToTemp && tempFile.exists()) {
+                            tempFile.delete()
+                        }
 
-                    body.byteStream().use { input ->
-                        FileOutputStream(tempFile, appendToTemp).use { output ->
-                            val buffer = ByteArray(16 * 1024)
-                            while (true) {
-                                ensureActive()
-                                val read = input.read(buffer)
-                                if (read <= 0) break
-                                output.write(buffer, 0, read)
-                                downloadedBytes += read.toLong()
-                                onProgress(downloadedBytes, totalBytes)
+                        val body = response.body ?: error(
+                            runBlocking { getString(Res.string.downloads_error_empty_body) },
+                        )
+                        val totalBytes = resolveTotalBytes(
+                            startingBytes = startingBytes,
+                            isPartialResume = isPartialResume,
+                            contentRangeHeader = response.header("Content-Range"),
+                            contentLength = body.contentLength().takeIf { it > 0L },
+                        )
+                        var downloadedBytes = startingBytes
+                        onProgress(downloadedBytes, totalBytes)
+
+                        body.byteStream().use { input ->
+                            FileOutputStream(tempFile, appendToTemp).use { output ->
+                                val buffer = ByteArray(16 * 1024)
+                                while (true) {
+                                    ensureActive()
+                                    val read = input.read(buffer)
+                                    if (read <= 0) break
+                                    output.write(buffer, 0, read)
+                                    downloadedBytes += read.toLong()
+                                    onProgress(downloadedBytes, totalBytes)
+                                }
+                                output.flush()
                             }
-                            output.flush()
+                        }
+
+                        if (destination.exists()) {
+                            destination.delete()
+                        }
+                        if (!tempFile.renameTo(destination)) {
+                            tempFile.copyTo(destination, overwrite = true)
+                            tempFile.delete()
+                        }
+
+                        val finalSize = destination.length()
+                        onSuccess(destination.toURI().toString(), totalBytes ?: finalSize)
+                        break // Success! Exit the retry loop.
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    if (error is java.io.IOException) {
+                        retryCount++
+                        if (retryCount <= maxRetries) {
+                            kotlinx.coroutines.delay(5000L) // Wait 5 seconds before retrying
+                            continue
                         }
                     }
-
-                    if (destination.exists()) {
-                        destination.delete()
-                    }
-                    if (!tempFile.renameTo(destination)) {
-                        tempFile.copyTo(destination, overwrite = true)
-                        tempFile.delete()
-                    }
-
-                    val finalSize = destination.length()
-                    onSuccess(destination.toURI().toString(), totalBytes ?: finalSize)
+                    onFailure(error.message ?: runBlocking { getString(Res.string.download_failed) })
+                    break
                 }
-            } catch (error: Throwable) {
-                onFailure(error.message ?: runBlocking { getString(Res.string.download_failed) })
             }
         }
 
