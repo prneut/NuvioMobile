@@ -68,7 +68,7 @@ fun pauseDownloadsForAppBackground() {
 internal actual object DownloadsPlatformDownloader {
     actual fun start(
         request: DownloadPlatformRequest,
-        onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
+        onProgress: (downloadedBytes: Long, totalBytes: Long?, speedBytesPerSec: Long?) -> Unit,
         onSuccess: (localFileUri: String, totalBytes: Long?) -> Unit,
         onFailure: (message: String) -> Unit,
     ): DownloadsTaskHandle {
@@ -224,7 +224,7 @@ private class IosDownloadDelegate(
     private val attemptedRangeRequest: Boolean,
     private val resumeFromBytes: Long,
     private val tempPath: String,
-    private val onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
+    private val onProgress: (downloadedBytes: Long, totalBytes: Long?, speedBytesPerSec: Long?) -> Unit,
 ) : NSObject(), NSURLSessionDataDelegateProtocol {
     private val completion = CompletableDeferred<IosDownloadResult>()
     private var result: IosDownloadResult? = null
@@ -378,9 +378,13 @@ private class IosDownloadDelegate(
             return
         }
 
+        val speedBytesPerSec = if (timeDelta > 0.0 && byteDelta > 0L && lastProgressBytes >= 0L) {
+            (byteDelta / timeDelta).toLong()
+        } else null
+
         lastProgressBytes = normalizedDownloadedBytes
         lastProgressTimestampSeconds = now
-        onProgress(normalizedDownloadedBytes, totalBytes)
+        onProgress(normalizedDownloadedBytes, totalBytes, speedBytesPerSec)
     }
 }
 
@@ -465,7 +469,7 @@ private suspend fun performDownloadRequest(
     val task = session.dataTaskWithRequest(nativeRequest)
 
     handle.attach(task, session)
-    onProgress(resumeFromBytes.coerceAtLeast(0L), null)
+    onProgress(resumeFromBytes.coerceAtLeast(0L), null, null)
     task.resume()
 
     return try {

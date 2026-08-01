@@ -479,7 +479,11 @@ private fun statusText(item: DownloadItem): String {
     }
 
     return when (item.status) {
-        DownloadStatus.Downloading -> stringResource(Res.string.downloads_status_downloading, size)
+        DownloadStatus.Downloading -> {
+            val base = stringResource(Res.string.downloads_status_downloading, size)
+            val speed = item.downloadSpeedBytesPerSec?.takeIf { it > 0L }?.let { "${formatBytes(it)}/s" }
+            if (speed != null) "$base • $speed" else base
+        }
         DownloadStatus.Paused -> stringResource(Res.string.downloads_status_paused, size)
         DownloadStatus.Completed -> stringResource(
             Res.string.downloads_status_completed,

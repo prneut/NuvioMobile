@@ -207,6 +207,7 @@ object DownloadsRepository {
         mutateItem(downloadId) { current ->
             current.copy(
                 status = DownloadStatus.Paused,
+                downloadSpeedBytesPerSec = null,
                 updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                 errorMessage = null,
             )
@@ -299,7 +300,7 @@ object DownloadsRepository {
 
         val handle = DownloadsPlatformDownloader.start(
             request = request,
-            onProgress = { downloadedBytes, totalBytes ->
+            onProgress = { downloadedBytes, totalBytes, speedBytesPerSec ->
                 mutateItem(item.id) { current ->
                     if (current.status != DownloadStatus.Downloading) {
                         current
@@ -307,6 +308,7 @@ object DownloadsRepository {
                         current.copy(
                             downloadedBytes = downloadedBytes.coerceAtLeast(0L),
                             totalBytes = totalBytes?.takeIf { it > 0L },
+                            downloadSpeedBytesPerSec = speedBytesPerSec,
                             updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                             errorMessage = null,
                         )
@@ -325,6 +327,7 @@ object DownloadsRepository {
                             current.downloadedBytes
                         },
                         totalBytes = totalBytes?.takeIf { it > 0L } ?: current.totalBytes,
+                        downloadSpeedBytesPerSec = null,
                         errorMessage = null,
                         updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                     )
@@ -339,6 +342,7 @@ object DownloadsRepository {
                     } else {
                         current.copy(
                             status = DownloadStatus.Failed,
+                            downloadSpeedBytesPerSec = null,
                             errorMessage = message.ifBlank { runBlocking { getString(Res.string.download_failed) } },
                             updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                         )

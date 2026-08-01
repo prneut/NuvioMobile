@@ -197,10 +197,16 @@ internal actual object DownloadsLiveStatusPlatform {
             DownloadStatus.Downloading -> {
                 val downloaded = formatBytes(item.downloadedBytes)
                 val total = item.totalBytes?.let(::formatBytes)
-                if (total != null) {
+                val speedText = item.downloadSpeedBytesPerSec?.takeIf { it > 0L }?.let { "${formatBytes(it)}/s" }
+                val progressText = if (total != null) {
                     runBlocking { getString(Res.string.downloads_live_downloading_with_total, detail, downloaded, total) }
                 } else {
                     runBlocking { getString(Res.string.downloads_live_downloading, detail, downloaded) }
+                }
+                if (speedText != null) {
+                    "$progressText • $speedText"
+                } else {
+                    progressText
                 }
             }
 

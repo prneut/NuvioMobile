@@ -13,7 +13,7 @@ internal interface DownloadsTaskHandle {
 internal expect object DownloadsPlatformDownloader {
     fun start(
         request: DownloadPlatformRequest,
-        onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
+        onProgress: (downloadedBytes: Long, totalBytes: Long?, speedBytesPerSec: Long?) -> Unit,
         onSuccess: (localFileUri: String, totalBytes: Long?) -> Unit,
         onFailure: (message: String) -> Unit,
     ): DownloadsTaskHandle

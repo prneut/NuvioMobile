@@ -11,9 +11,12 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.getString
 import nuvio.composeapp.generated.resources.*
 
+import android.net.wifi.WifiManager
+
 class DownloadsForegroundService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     companion object {
         var activeService: DownloadsForegroundService? = null
@@ -68,6 +71,12 @@ class DownloadsForegroundService : Service() {
             wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Nuvio:DownloadsWakeLock")
             wakeLock?.acquire(4 * 60 * 60 * 1000L) // 4 hours max per chunk/part
         }
+        if (wifiLock == null) {
+            val wifiManager = getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            @Suppress("DEPRECATION")
+            wifiLock = wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Nuvio:DownloadsWifiLock")
+            wifiLock?.acquire()
+        }
     }
 
     private fun releaseWakeLock() {
@@ -75,6 +84,10 @@ class DownloadsForegroundService : Service() {
             wakeLock?.takeIf { it.isHeld }?.release()
         } catch (e: Exception) {}
         wakeLock = null
+        try {
+            wifiLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {}
+        wifiLock = null
     }
 
     override fun onDestroy() {
