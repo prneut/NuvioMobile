@@ -1509,6 +1509,17 @@ fun MetaDetailsScreen(
                             ),
                         )
                     }
+                    if (onDownload != null) {
+                        add(
+                            PosterZoomOverlayAction(
+                                icon = Icons.Default.Download,
+                                label = stringResource(Res.string.action_download),
+                                onSelected = {
+                                    onEpisodeDownloadClick(selectedEpisode)
+                                },
+                            ),
+                        )
+                    }
                 },
                 hazeState = episodeOverlayHazeState,
                 onDismissed = {
