@@ -2119,43 +2119,48 @@ private fun ConfiguredMetaSections(
                 DetailActionButtons(
                     playLabel = playButtonLabel,
                     secondaryActions = buildList {
-                        add(DetailSecondaryAction(
-                            label = if (isWatched) {
-                                stringResource(Res.string.hero_mark_unwatched)
-                            } else {
-                                stringResource(Res.string.hero_mark_watched)
-                            },
-                            icon = if (isWatched) {
-                                Icons.Default.CheckCircle
-                            } else {
-                                Icons.Default.CheckCircleOutline
-                            },
-                            isActive = isWatched,
-                            onClick = onWatchedClick,
-                        ))
-                        add(DetailSecondaryAction(
-                            label = if (isSaved) {
-                                stringResource(Res.string.hero_remove_from_library)
-                            } else {
-                                stringResource(Res.string.hero_add_to_library)
-                            },
-                            icon = if (isSaved) {
-                                Icons.Default.Check
-                            } else {
-                                Icons.Default.Add
-                            },
-                            isActive = isSaved,
-                            onClick = onSaveClick,
-                            onLongClick = onSaveLongClick,
-                        ),
-                        DetailSecondaryAction(
-                            label = stringResource(Res.string.action_download),
-                            icon = Icons.Default.Download,
-                            isActive = false,
-                            onClick = onPrimaryDownloadClick,
-                        ),
-                    ))
-                },
+                        add(
+                            DetailSecondaryAction(
+                                label = if (isWatched) {
+                                    stringResource(Res.string.hero_mark_unwatched)
+                                } else {
+                                    stringResource(Res.string.hero_mark_watched)
+                                },
+                                icon = if (isWatched) {
+                                    Icons.Default.CheckCircle
+                                } else {
+                                    Icons.Default.CheckCircleOutline
+                                },
+                                isActive = isWatched,
+                                onClick = onWatchedClick,
+                            ),
+                        )
+                        add(
+                            DetailSecondaryAction(
+                                label = if (isSaved) {
+                                    stringResource(Res.string.hero_remove_from_library)
+                                } else {
+                                    stringResource(Res.string.hero_add_to_library)
+                                },
+                                icon = if (isSaved) {
+                                    Icons.Default.Check
+                                } else {
+                                    Icons.Default.Add
+                                },
+                                isActive = isSaved,
+                                onClick = onSaveClick,
+                                onLongClick = onSaveLongClick,
+                            ),
+                        )
+                        add(
+                            DetailSecondaryAction(
+                                label = stringResource(Res.string.action_download),
+                                icon = Icons.Default.Download,
+                                isActive = false,
+                                onClick = onPrimaryDownloadClick,
+                            ),
+                        )
+                    },
                     isTablet = isTablet,
                     onPlayClick = onPrimaryPlayClick,
                     onPlayLongClick = if (showManualPlayOption) onPrimaryPlayLongClick else null,
