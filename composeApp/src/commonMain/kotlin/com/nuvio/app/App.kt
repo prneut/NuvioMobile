@@ -102,6 +102,8 @@ import com.nuvio.app.core.ui.rememberNuvioNavBarScrollState
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.ui.NuvioContinueWatchingActionSheet
 import com.nuvio.app.core.ui.NuvioCardDepthSurface
+import com.nuvio.app.core.ui.DisintegrationRequest
+import com.nuvio.app.core.ui.DisintegrationRequestController
 import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
 import com.nuvio.app.core.ui.PosterZoomAnchor
 import com.nuvio.app.core.ui.PosterZoomAnchorHolder
@@ -162,6 +164,7 @@ import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.library.LibrarySection
 import com.nuvio.app.features.library.LibrarySortOption
 import com.nuvio.app.features.library.LibrarySourceMode
+import com.nuvio.app.features.library.librarySectionItemKey
 import com.nuvio.app.features.library.PendingTrackingMembershipRemoval
 import com.nuvio.app.features.library.TrackingMembershipRemovalConfirmationHost
 import com.nuvio.app.features.library.executeTrackingMembershipOperation
@@ -243,6 +246,7 @@ import com.nuvio.app.features.watchprogress.ResumePromptRepository
 import com.nuvio.app.features.watchprogress.WatchProgressPlaybackSession
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.features.watchprogress.WatchProgressSourceCoordinator
+import com.nuvio.app.features.watchprogress.continueWatchingItemKey
 import com.nuvio.app.features.watchprogress.nextUpDismissKey
 import com.nuvio.app.features.watchprogress.toContinueWatchingItem
 import com.nuvio.app.features.watching.application.WatchingActions
@@ -827,6 +831,8 @@ private fun MainAppContent(
         val posterOverlayHazeState = rememberHazeState()
         var selectedContinueWatchingForActions by remember { mutableStateOf<ContinueWatchingItem?>(null) }
         var selectedContinueWatchingZoomAnchor by remember { mutableStateOf<PosterZoomAnchor?>(null) }
+        val libraryDisintegrationRequests = remember { DisintegrationRequestController<String>() }
+        val continueWatchingDisintegrationRequests = remember { DisintegrationRequestController<String>() }
         var requestedSettingsPageName by rememberSaveable { mutableStateOf<String?>(null) }
         var showLibraryListPicker by remember { mutableStateOf(false) }
         var pickerItem by remember { mutableStateOf<LibraryItem?>(null) }
@@ -872,6 +878,7 @@ private fun MainAppContent(
         WatchedRepository.ensureLoaded()
         WatchedRepository.uiState
     }.collectAsStateWithLifecycle()
+    val fullyWatchedSeriesKeys by WatchedRepository.fullyWatchedSeriesKeys.collectAsStateWithLifecycle()
     val downloadsUiState by remember {
         DownloadsRepository.ensureLoaded()
         DownloadsRepository.uiState
@@ -1801,6 +1808,7 @@ private fun MainAppContent(
         }
 
         val onContinueWatchingRemove: (ContinueWatchingItem) -> Unit = { item ->
+            continueWatchingDisintegrationRequests.arm(continueWatchingItemKey(item))
             if (item.isNextUp) {
                 ContinueWatchingPreferencesRepository.addDismissedNextUpKey(
                     nextUpDismissKey(
@@ -2006,6 +2014,8 @@ private fun MainAppContent(
                                         },
                                         onContinueWatchingClick = onContinueWatchingClick,
                                         onContinueWatchingLongPress = onContinueWatchingLongPress,
+                                        libraryDisintegrationRequest = libraryDisintegrationRequests.current,
+                                        continueWatchingDisintegrationRequest = continueWatchingDisintegrationRequests.current,
                                         onSwitchProfile = onSwitchProfile,
                                         onSettingsPageClick = if (useNativeNavigation && !isTabletLayout) {
                                             { pageName, title ->
@@ -3359,6 +3369,7 @@ private fun MainAppContent(
                     val isWatched = WatchingState.isPosterWatched(
                         watchedKeys = watchedUiState.watchedKeys,
                         item = preview,
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     )
                     val removesFromLibrary = isSaved &&
                         (posterActionTarget.libraryItem != null || !isRemoteLibrarySource)
@@ -3391,6 +3402,8 @@ private fun MainAppContent(
                                     val libraryItem = posterActionTarget.libraryItem
                                         ?: preview.toLibraryItem(savedAtEpochMs = 0L)
                                     if (posterActionTarget.libraryItem != null) {
+                                        val animationKey = posterActionTarget.libraryListKey
+                                            ?.let { listKey -> librarySectionItemKey(listKey, libraryItem) }
                                         if (isRemoteLibrarySource) {
                                             coroutineScope.launch {
                                                 val listKey = posterActionTarget.libraryListKey
@@ -3411,14 +3424,33 @@ private fun MainAppContent(
                                                         )
                                                     }
                                                 }
+                                                val removeMembershipWithAnimation:
+                                                    suspend (Set<TrackingProviderId>) -> TrackingMembershipApplyResult =
+                                                    { confirmedProviders ->
+                                                        val request = if (removesFromLibrary) {
+                                                            animationKey?.let(libraryDisintegrationRequests::arm)
+                                                        } else {
+                                                            null
+                                                        }
+                                                        try {
+                                                            removeMembership(confirmedProviders).also { result ->
+                                                                if (result.requiresRemovalConfirmation && request != null) {
+                                                                    libraryDisintegrationRequests.cancel(request)
+                                                                }
+                                                            }
+                                                        } catch (error: Throwable) {
+                                                            request?.let(libraryDisintegrationRequests::cancel)
+                                                            throw error
+                                                        }
+                                                    }
                                                 executeTrackingMembershipOperation(
-                                                    operation = { removeMembership(emptySet()) },
+                                                    operation = { removeMembershipWithAnimation(emptySet()) },
                                                     onSuccess = { result ->
                                                         if (result.requiresRemovalConfirmation) {
                                                             pendingTrackingRemoval = PendingTrackingMembershipRemoval(
                                                                 itemTitle = libraryItem.name,
                                                                 confirmations = result.requiredRemovalConfirmations,
-                                                                retry = removeMembership,
+                                                                retry = removeMembershipWithAnimation,
                                                                 onApplied = {},
                                                                 onFailure = { error ->
                                                                     NuvioToastController.show(
@@ -3437,6 +3469,9 @@ private fun MainAppContent(
                                                 )
                                             }
                                         } else {
+                                            if (removesFromLibrary) {
+                                                animationKey?.let(libraryDisintegrationRequests::arm)
+                                            }
                                             LibraryRepository.remove(libraryItem.id)
                                         }
                                     } else {
@@ -3757,6 +3792,8 @@ private fun AppTabHost(
     onConnectCloudClick: (() -> Unit)? = null,
     onContinueWatchingClick: ((ContinueWatchingItem) -> Unit)? = null,
     onContinueWatchingLongPress: ((ContinueWatchingItem) -> Unit)? = null,
+    libraryDisintegrationRequest: DisintegrationRequest<String>? = null,
+    continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
     onSwitchProfile: (() -> Unit)? = null,
     onSettingsPageClick: ((pageName: String, title: String) -> Unit)? = null,
     onHomescreenSettingsClick: () -> Unit = {},
@@ -3791,6 +3828,7 @@ private fun AppTabHost(
                         onPosterLongClick = onPosterLongClick,
                         onContinueWatchingClick = onContinueWatchingClick,
                         onContinueWatchingLongPress = onContinueWatchingLongPress,
+                        continueWatchingDisintegrationRequest = continueWatchingDisintegrationRequest,
                         onFolderClick = onFolderClick,
                         onFirstCatalogRendered = onInitialHomeContentRendered,
                     )
@@ -3815,6 +3853,7 @@ private fun AppTabHost(
                         onSectionViewAllClick = onLibrarySectionViewAllClick,
                         onCloudFilePlay = onCloudFilePlay,
                         onConnectCloudClick = onConnectCloudClick,
+                        disintegrationRequest = libraryDisintegrationRequest,
                     )
                 }
 
