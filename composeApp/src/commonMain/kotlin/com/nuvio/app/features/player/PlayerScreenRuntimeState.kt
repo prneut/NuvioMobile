@@ -92,7 +92,7 @@ internal class PlayerScreenRuntime(
 
     var gestureController: PlayerGestureController? = null
 
-    var controlsVisible by mutableStateOf(true)
+    var controlsVisible by mutableStateOf(false)
     var playerControlsLocked by mutableStateOf(false)
     var activeSourceUrl by mutableStateOf(sourceUrl)
     var activeSourceAudioUrl by mutableStateOf(sourceAudioUrl)
@@ -190,6 +190,8 @@ internal class PlayerScreenRuntime(
     var useCustomSubtitles by mutableStateOf(false)
     var preferredAudioSelectionApplied by mutableStateOf(false)
     var preferredSubtitleSelectionApplied by mutableStateOf(false)
+    var isUserExplicitSubtitleSelection by mutableStateOf(false)
+    var hasScannedTextTracksOnce by mutableStateOf(false)
     var autoFetchedAddonSubtitlesForKey by mutableStateOf<String?>(null)
     var trackPreferenceRestoreApplied by mutableStateOf(false)
     var subtitleDelayMs by mutableStateOf(0)

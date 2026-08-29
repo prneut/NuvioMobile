@@ -10,6 +10,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -55,6 +56,7 @@ import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
 import com.nuvio.app.core.sync.AppForegroundMonitor
+import com.nuvio.app.core.sync.AppVisibility
 import com.nuvio.app.core.sync.ProfileSettingsSync
 import com.nuvio.app.core.sync.SyncManager
 import com.nuvio.app.core.ui.DisintegrationRequestController
@@ -147,6 +149,7 @@ import com.nuvio.app.features.updater.rememberAppUpdaterController
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watching.application.WatchingActions
 import com.nuvio.app.features.watching.application.WatchingState
+import com.nuvio.app.features.watching.domain.isShortPlaceholderDuration
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
 import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesRepository
 import com.nuvio.app.features.watchprogress.ResumePromptRepository
@@ -219,6 +222,7 @@ internal fun MainAppContent(
         var searchFocusRequestCount by remember { mutableStateOf(0) }
         val homeScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val searchScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+        val searchListState = rememberLazyListState()
         val libraryScrollToTopRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val settingsRootActionRequests = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
         val currentRoute = navBackStack.lastOrNull() as? AppRoute
@@ -460,15 +464,6 @@ internal fun MainAppContent(
         initialHomeReady = true
     }
 
-    LaunchedEffect(Unit) {
-        if (!ownsAppRuntime) return@LaunchedEffect
-        AppForegroundMonitor.events().collect {
-            NetworkStatusRepository.requestForegroundRefresh()
-            DeviceSessionRegistration.registerIfAuthenticated()
-            MemberAccessRepository.refreshIfStale()
-        }
-    }
-
     LaunchedEffect(networkStatusUiState.condition) {
         if (!ownsAppRuntime) return@LaunchedEffect
         val condition = networkStatusUiState.condition
@@ -526,7 +521,7 @@ internal fun MainAppContent(
                     ?: ProfileRepository.activeProfileId
                 val authenticatedState = authState as? AuthState.Authenticated
                 if (authenticatedState != null && !authenticatedState.isAnonymous) {
-                    SyncManager.requestForegroundPull(profileId = profileId, force = true)
+                    SyncManager.requestForegroundPull(profileId = profileId)
                     watchSourceReconnectPending = false
                 } else {
                     val result = WatchProgressSourceCoordinator.refreshActiveSource(
@@ -580,28 +575,33 @@ internal fun MainAppContent(
         }
     }
 
-    DisposableEffect(authState, profileState.activeProfile?.profileIndex) {
-        val authenticatedState = authState as? AuthState.Authenticated
-        val activeProfileId = profileState.activeProfile?.profileIndex
-        if (ownsAppRuntime && authenticatedState != null && !authenticatedState.isAnonymous && activeProfileId != null) {
-            SyncManager.startPeriodicNuvioSyncPull(activeProfileId)
-        } else if (ownsAppRuntime) {
-            SyncManager.stopPeriodicNuvioSyncPull()
-        }
-        onDispose {
-            if (ownsAppRuntime) SyncManager.stopPeriodicNuvioSyncPull()
-        }
-    }
-
     LaunchedEffect(authState, profileState.activeProfile?.profileIndex) {
         if (!ownsAppRuntime) return@LaunchedEffect
-        val authenticatedState = authState as? AuthState.Authenticated ?: return@LaunchedEffect
-        if (authenticatedState.isAnonymous) return@LaunchedEffect
-
-        val activeProfileId = profileState.activeProfile?.profileIndex ?: return@LaunchedEffect
-        SyncManager.pullAllForProfile(activeProfileId)
-        AppForegroundMonitor.events().collect {
-            SyncManager.requestForegroundPull(activeProfileId, force = true)
+        val authenticatedState = authState as? AuthState.Authenticated
+        val activeProfileId = profileState.activeProfile?.profileIndex
+        val syncProfileId = activeProfileId?.takeIf {
+            authenticatedState != null && !authenticatedState.isAnonymous
+        }
+        syncProfileId?.let(SyncManager::pullAllForProfile)
+        try {
+            AppForegroundMonitor.events().collect { visibility ->
+                when (visibility) {
+                    AppVisibility.Foreground -> {
+                        NetworkStatusRepository.requestForegroundRefresh()
+                        DeviceSessionRegistration.registerIfAuthenticated()
+                        MemberAccessRepository.refreshIfStale()
+                        if (syncProfileId != null) {
+                            SyncManager.startPeriodicNuvioSyncPull(syncProfileId)
+                            SyncManager.requestForegroundPull(syncProfileId)
+                        } else {
+                            SyncManager.stopPeriodicNuvioSyncPull()
+                        }
+                    }
+                    AppVisibility.Background -> SyncManager.stopPeriodicNuvioSyncPull()
+                }
+            }
+        } finally {
+            SyncManager.stopPeriodicNuvioSyncPull()
         }
     }
     var resumePromptItem by remember { mutableStateOf<ContinueWatchingItem?>(null) }
@@ -611,6 +611,9 @@ internal fun MainAppContent(
         if (result != null && result.positionMs > 0L) {
             coroutineScope.launch {
                 val durationMs = result.durationMs
+                // Guard: debrid cache-sync placeholders and error clips report a short
+                // duration reaching completion. Skip scrobble + progress for those.
+                if (durationMs != null && isShortPlaceholderDuration(durationMs)) return@launch
                 val progressPercent = if (durationMs != null && durationMs > 0L) {
                     (result.positionMs.toFloat() / durationMs.toFloat() * 100f).coerceIn(0f, 100f)
                 } else {
@@ -1242,6 +1245,7 @@ internal fun MainAppContent(
                             settingsRootActionRequests = settingsRootActionRequests,
                         ),
                         state = AppTabState(
+                            searchListState = searchListState,
                             homeContentGeneration = appContentGeneration,
                             searchFocusRequestCount = searchFocusRequestCount,
                             rootActionsEnabled = currentRoute is TabsRoute,

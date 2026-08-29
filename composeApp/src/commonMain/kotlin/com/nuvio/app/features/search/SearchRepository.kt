@@ -33,6 +33,26 @@ import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 
+internal fun <T> canReuseRequestState(
+    forceRefresh: Boolean,
+    requestKey: T,
+    cachedRequestKey: T?,
+): Boolean = !forceRefresh && requestKey == cachedRequestKey
+
+internal fun resolveDiscoverCatalog(
+    sources: List<DiscoverCatalogOption>,
+    preferredCatalogKey: String?,
+    currentCatalogKey: String?,
+): DiscoverCatalogOption? =
+    sources.firstOrNull { it.key == preferredCatalogKey }
+        ?: sources.firstOrNull { it.key == currentCatalogKey }
+        ?: sources.firstOrNull()
+
+private data class DiscoverRequestKey(
+    val sources: List<DiscoverCatalogOption>,
+    val hideUnreleasedContent: Boolean,
+)
+
 object SearchRepository {
     private val log = Logger.withTag("SearchRepository")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -45,7 +65,7 @@ object SearchRepository {
     private var activeDiscoverJob: Job? = null
     private var lastRequestKey: String? = null
     private var discoverSources: List<DiscoverCatalogOption> = emptyList()
-    private var lastDiscoverHideUnreleasedContent: Boolean? = null
+    private var lastDiscoverRequestKey: DiscoverRequestKey? = null
 
     fun search(
         query: String,
@@ -92,7 +112,7 @@ object SearchRepository {
                 },
             )
         }
-        if (!forceRefresh && requestKey == lastRequestKey && activeJob?.isActive == true) return
+        if (canReuseRequestState(forceRefresh, requestKey, lastRequestKey)) return
         lastRequestKey = requestKey
 
         activeJob?.cancel()
@@ -105,7 +125,7 @@ object SearchRepository {
                     runCatching { request.toSection(forceRefresh = forceRefresh) }
                         .fold(
                             onSuccess = { section ->
-                                resultChannel.send(
+                                resultChannel.trySend(
                                     IndexedSearchResult(
                                         index = index,
                                         section = section,
@@ -114,7 +134,7 @@ object SearchRepository {
                             },
                             onFailure = { error ->
                                 if (error is CancellationException) throw error
-                                resultChannel.send(
+                                resultChannel.trySend(
                                     IndexedSearchResult(
                                         index = index,
                                         error = error,
@@ -175,7 +195,7 @@ object SearchRepository {
         activeDiscoverJob?.cancel()
         lastRequestKey = null
         discoverSources = emptyList()
-        lastDiscoverHideUnreleasedContent = null
+        lastDiscoverRequestKey = null
         _uiState.value = SearchUiState()
         _discoverUiState.value = DiscoverUiState()
     }
@@ -188,7 +208,7 @@ object SearchRepository {
         if (activeAddons.isEmpty()) {
             activeDiscoverJob?.cancel()
             discoverSources = emptyList()
-            lastDiscoverHideUnreleasedContent = null
+            lastDiscoverRequestKey = null
             log.d { "Discover refresh aborted: no active addons" }
             _discoverUiState.value = DiscoverUiState(
                 emptyStateReason = DiscoverEmptyStateReason.NoActiveAddons,
@@ -199,12 +219,11 @@ object SearchRepository {
         val sources = buildDiscoverSources(activeAddons)
         val current = _discoverUiState.value
         val hideUnreleasedContent = HomeCatalogSettingsRepository.snapshot().hideUnreleasedContent
-        if (
-            !forceRefresh &&
-            sources == discoverSources &&
-            lastDiscoverHideUnreleasedContent == hideUnreleasedContent &&
-            activeDiscoverJob?.isActive == true
-        ) {
+        val requestKey = DiscoverRequestKey(
+            sources = sources,
+            hideUnreleasedContent = hideUnreleasedContent,
+        )
+        if (canReuseRequestState(forceRefresh, requestKey, lastDiscoverRequestKey)) {
             log.d {
                 "Reusing discover state type=${current.selectedType} catalog=${current.selectedCatalogKey} " +
                     "genre=${current.selectedGenre ?: "<all>"} items=${current.items.size} nextSkip=${current.nextSkip}"
@@ -213,7 +232,7 @@ object SearchRepository {
         }
 
         discoverSources = sources
-        lastDiscoverHideUnreleasedContent = hideUnreleasedContent
+        lastDiscoverRequestKey = requestKey
         if (sources.isEmpty()) {
             activeDiscoverJob?.cancel()
             log.d { "Discover refresh found no compatible discover catalogs" }
@@ -223,12 +242,19 @@ object SearchRepository {
             return
         }
 
+        val preferredCatalogKey = DiscoverSelectionStorage.loadCatalogKey()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val selectedCatalog = requireNotNull(
+            resolveDiscoverCatalog(
+                sources = sources,
+                preferredCatalogKey = preferredCatalogKey,
+                currentCatalogKey = current.selectedCatalogKey,
+            ),
+        )
         val typeOptions = sources.map { it.type }.distinct()
-        val selectedType = current.selectedType
-            ?.takeIf { type -> typeOptions.contains(type) }
-            ?: typeOptions.first()
+        val selectedType = selectedCatalog.type
         val catalogOptions = sources.filter { it.type == selectedType }
-        val selectedCatalog = catalogOptions.firstOrNull { it.key == current.selectedCatalogKey } ?: catalogOptions.first()
         val selectedGenre = selectedCatalog.resolveGenreSelection(current.selectedGenre)
 
         _discoverUiState.value = DiscoverUiState(
@@ -286,6 +312,7 @@ object SearchRepository {
             emptyStateReason = null,
             errorMessage = null,
         )
+        DiscoverSelectionStorage.saveCatalogKey(selectedCatalog.key)
         loadDiscoverFeed(
             reset = true,
             forceRefresh = false,
@@ -306,6 +333,7 @@ object SearchRepository {
             emptyStateReason = null,
             errorMessage = null,
         )
+        DiscoverSelectionStorage.saveCatalogKey(selectedCatalog.key)
         loadDiscoverFeed(
             reset = true,
             forceRefresh = false,

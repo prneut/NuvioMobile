@@ -64,6 +64,8 @@ internal fun PlayerScreenRuntime.resetIdentityStateIfNeeded() {
         trackPreferenceRestoreApplied = false
         preferredAudioSelectionApplied = false
         preferredSubtitleSelectionApplied = false
+        isUserExplicitSubtitleSelection = false
+        hasScannedTextTracksOnce = false
     }
 
     val videoIdentity = "$identity:$activeVideoId:$activeSeasonNumber:$activeEpisodeNumber"
@@ -232,7 +234,6 @@ internal fun PlayerScreenRuntime.tryShowParentalGuide() {
     if (!playerSettingsUiState.showParentalGuide) return
     if (!parentalGuideHasShown && parentalWarnings.isNotEmpty() && !playbackStartedForParentalGuide) {
         playbackStartedForParentalGuide = true
-        controlsVisible = true
         showParentalGuide = true
         parentalGuideHasShown = true
     }
