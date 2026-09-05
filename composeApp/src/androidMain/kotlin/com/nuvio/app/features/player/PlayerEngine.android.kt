@@ -785,6 +785,14 @@ private fun ExoPlayerSurface(
                     exoPlayer.selectTrackByIndex(C.TRACK_TYPE_AUDIO, index)
                 }
 
+                override fun applyAudioLanguagePreferences(languages: List<String>) {
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        .setPreferredAudioLanguages(*languages.toTypedArray())
+                        .build()
+                }
+
                 override fun selectSubtitleTrack(index: Int) {
                     Log.d(TAG, "selectSubtitleTrack: index=$index")
                     sidecarController.stopSidecarAddonSubtitle(clearView = true)
@@ -1369,6 +1377,7 @@ private class NuvioLibmpvView(
         val sourceUrl = currentSourceUrl ?: return
         applyRequestHeadersNow(currentRequestHeaders)
         setPausedNow(!playWhenReady)
+        mpv.setPropertyString("aid", "auto")
         mpv.command("loadfile", sourceUrl.toMpvSource(), "replace")
         currentSourceAudioUrl?.takeIf { it.isNotBlank() }?.let { sourceAudioUrl ->
             mpv.command("audio-add", sourceAudioUrl.toMpvSource(), "auto")
@@ -1535,6 +1544,16 @@ private class NuvioLibmpvView(
                 }
             }
 
+            override fun applyAudioLanguagePreferences(languages: List<String>) {
+                executeMpv {
+                    mpv.setPropertyString("alang", languages.joinToString(","))
+                    mpv.getPropertyString("aid")?.takeIf { it.toIntOrNull() != null }?.let { currentId ->
+                        mpv.setPropertyString("aid", currentId)
+                    }
+                    mpv.setPropertyString("aid", "auto")
+                }
+            }
+
             override fun selectSubtitleTrack(index: Int) {
                 if (index < 0) {
                     executeMpv { mpv.setPropertyString("sid", "no") }
@@ -1565,7 +1584,7 @@ private class NuvioLibmpvView(
                 hasActiveSubtitle: Boolean,
                 useCustomSubtitles: Boolean,
             ) {
-                if (hasActiveSubtitle || useCustomSubtitles) {
+                if ((hasActiveSubtitle || useCustomSubtitles) && autoSelectionApplied) {
                     return
                 }
                 val languages = listOfNotNull(
@@ -1997,7 +2016,7 @@ private fun ExoPlayer.applySubtitleTrackPreferences(
     hasActiveSubtitle: Boolean,
     useCustomSubtitles: Boolean,
 ) {
-    if (hasActiveSubtitle || useCustomSubtitles) {
+    if ((hasActiveSubtitle || useCustomSubtitles) && autoSelectionApplied) {
         return
     }
 
