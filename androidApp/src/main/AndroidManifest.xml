@@ -175,10 +175,6 @@
             android:name="com.nuvio.app.features.downloads.DownloadsNotificationActionReceiver"
             android:exported="false" />
 
-        <service
-            android:name="com.nuvio.app.features.downloads.DownloadsForegroundService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

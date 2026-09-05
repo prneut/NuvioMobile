@@ -301,7 +301,7 @@ object DownloadsRepository {
 
         val handle = DownloadsPlatformDownloader.start(
             request = request,
-            onProgress = { downloadedBytes, totalBytes, speedBytesPerSec ->
+            onProgress = { downloadedBytes, totalBytes ->
                 mutateItem(item.id) { current ->
                     if (current.status != DownloadStatus.Downloading) {
                         current
@@ -309,7 +309,7 @@ object DownloadsRepository {
                         current.copy(
                             downloadedBytes = downloadedBytes.coerceAtLeast(0L),
                             totalBytes = totalBytes?.takeIf { it > 0L },
-                            downloadSpeedBytesPerSec = speedBytesPerSec,
+                            downloadSpeedBytesPerSec = null,
                             updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                             errorMessage = null,
                         )
